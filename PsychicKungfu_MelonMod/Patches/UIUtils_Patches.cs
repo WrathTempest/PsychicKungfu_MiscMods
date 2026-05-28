@@ -1,5 +1,4 @@
 ﻿using HarmonyLib;
-using MelonLoader;
 using PsychicKungfu_MelonMod.Utils;
 using UnityEngine;
 

@@ -1,6 +1,5 @@
 ﻿using DBLoad;
 using HarmonyLib;
-using MelonLoader;
 
 namespace PsychicKungfu_MelonMod.Patches
 {
@@ -22,11 +21,6 @@ namespace PsychicKungfu_MelonMod.Patches
         public static void ValueBoost(ref float add, EffectId id)
         {
             int effect = (int)id;
-            if (effect == 21) //martial exp gain
-            {
-                add *= 2;
-                return;
-            }
             if (effect < 0x12D || effect > 0x134) return;
             add *= 2;
         }

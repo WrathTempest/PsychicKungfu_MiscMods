@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using MelonLoader;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
@@ -67,7 +66,7 @@ namespace PsychicKungfu_MelonMod
             {
                 try { DumpType(dbType, language); }
                 catch (Exception e)
-                { MelonLogger.Error($"[DBLoad] Dump failed for {dbType.Name}: {e}"); }
+                { Main.Log.LogError($"[DBLoad] Dump failed for {dbType.Name}: {e}"); }
             }
         }
 
@@ -80,7 +79,7 @@ namespace PsychicKungfu_MelonMod
             if (!Directory.Exists(OverrideDir))
             {
                 Directory.CreateDirectory(OverrideDir);
-                MelonLogger.Msg($"[DBLoad] Override folder created (empty): {OverrideDir}");
+                Main.Log.LogInfo($"[DBLoad] Override folder created (empty): {OverrideDir}");
                 return;
             }
 
@@ -93,13 +92,13 @@ namespace PsychicKungfu_MelonMod
 
                 if (!typeMap.TryGetValue(name, out Type dbType))
                 {
-                    MelonLogger.Warning($"[DBLoad] No DB class matches override file '{name}.json', skipping.");
+                    Main.Log.LogWarning($"[DBLoad] No DB class matches override file '{name}.json', skipping.");
                     continue;
                 }
 
                 try { ApplyOverride(dbType, file); }
                 catch (Exception e)
-                { MelonLogger.Error($"[DBLoad] Override failed for {name}: {e}"); }
+                { Main.Log.LogError($"[DBLoad] Override failed for {name}: {e}"); }
             }
         }
 
@@ -136,7 +135,7 @@ namespace PsychicKungfu_MelonMod
             var dic = dicProp.GetValue(null) as IEnumerable;
             if (dic == null)
             {
-                MelonLogger.Warning($"[DBLoad] {dbType.Name}.Dic returned null, skipping.");
+                Main.Log.LogWarning($"[DBLoad] {dbType.Name}.Dic returned null, skipping.");
                 return;
             }
 
@@ -158,7 +157,7 @@ namespace PsychicKungfu_MelonMod
                 Path.Combine(DumpDir, dbType.Name + ".json"),
                 array.ToString(Formatting.Indented));
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[DBLoad] Dumped {dbType.Name}: {values.Count} entries " +
                 $"(language={language}) → {DumpDir}");
         }
@@ -259,7 +258,7 @@ namespace PsychicKungfu_MelonMod
 
             if (languageType == null)
             {
-                MelonLogger.Warning("[DBLoad] Language type not found — strings will not be localized.");
+                Main.Log.LogWarning("[DBLoad] Language type not found — strings will not be localized.");
                 return;
             }
 
@@ -273,13 +272,13 @@ namespace PsychicKungfu_MelonMod
 
             if (_languageGetMethod == null)
             {
-                MelonLogger.Warning("[DBLoad] Language.Get(int) not found.");
+                Main.Log.LogWarning("[DBLoad] Language.Get(int) not found.");
                 return;
             }
 
             if (languageDataType == null)
             {
-                MelonLogger.Warning("[DBLoad] LanguageData type not found.");
+                Main.Log.LogWarning("[DBLoad] LanguageData type not found.");
                 return;
             }
 
@@ -289,9 +288,9 @@ namespace PsychicKungfu_MelonMod
                 BindingFlags.Public | BindingFlags.Instance);
 
             if (_traditionalField == null || _englishField == null)
-                MelonLogger.Warning("[DBLoad] LanguageData fields not found (m_Traditional / m_English).");
+                Main.Log.LogWarning("[DBLoad] LanguageData fields not found (m_Traditional / m_English).");
             else
-                MelonLogger.Msg("[DBLoad] Localization ready.");
+                Main.Log.LogInfo("[DBLoad] Localization ready.");
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -329,7 +328,7 @@ namespace PsychicKungfu_MelonMod
                 if (exists) replaced++; else added++;
             }
 
-            MelonLogger.Msg($"[DBLoad] {dbType.Name}: {replaced} replaced, {added} added.");
+            Main.Log.LogInfo($"[DBLoad] {dbType.Name}: {replaced} replaced, {added} added.");
         }
 
         private static object ReconstructFromJObject(Type dataType, JObject jo)

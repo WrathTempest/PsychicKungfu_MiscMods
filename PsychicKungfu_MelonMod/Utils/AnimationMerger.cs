@@ -1,6 +1,5 @@
 ﻿using DBLoad;
 using HarmonyLib;
-using MelonLoader;
 using Spine;
 using Spine.Unity;
 using System;
@@ -58,7 +57,7 @@ namespace PsychicKungfu_MelonMod.Utils
         {
             if (_animationsField == null)
             {
-                MelonLogger.Error(
+                Main.Log.LogError(
                     "[AnimMerger] SkeletonData.animations field not found — " +
                     "Spine version mismatch or stripping. Aborting.");
                 return;
@@ -66,7 +65,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (Character.Dic == null || Character.Dic.Count == 0)
             {
-                MelonLogger.Error(
+                Main.Log.LogError(
                     "[AnimMerger] Character.Dic is null/empty — called too early? Aborting.");
                 return;
             }
@@ -76,7 +75,7 @@ namespace PsychicKungfu_MelonMod.Utils
             foreach (var kv in Character.Dic)
                 if (kv.Value != null && seen.Add(kv.Value.m_res)) total++;
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[AnimMerger] Starting prefab scan — " +
                 $"{Character.Dic.Count} entries, {total} unique res IDs.");
 
@@ -96,7 +95,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     var prefab = obj as GameObject;
                     if (prefab == null)
                     {
-                        MelonLogger.Warning($"[AnimMerger] Not a GameObject: '{path}'");
+                        Main.Log.LogWarning($"[AnimMerger] Not a GameObject: '{path}'");
                         skipped++;
                         continue;
                     }
@@ -128,7 +127,7 @@ namespace PsychicKungfu_MelonMod.Utils
                         }
                     }
 
-                    MelonLogger.Msg(
+                    Main.Log.LogInfo(
                         $"[AnimMerger] res={cd.m_res} bones={srcBones} slots={srcSlots} " +
                         $"+{added} new (enum_path={enumPath}) pool_total={_pool.Count}");
                     scanned++;
@@ -136,11 +135,11 @@ namespace PsychicKungfu_MelonMod.Utils
                 catch (Exception ex)
                 {
                     failed++;
-                    MelonLogger.Error($"[AnimMerger] Scan exception: {ex}");
+                    Main.Log.LogError($"[AnimMerger] Scan exception: {ex}");
                 }
             }
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[AnimMerger] Scan complete — " +
                 $"scanned={scanned} skipped={skipped} failed={failed} pool={_pool.Count}");
         }
@@ -167,7 +166,7 @@ namespace PsychicKungfu_MelonMod.Utils
             var obj = Singleton<ResManager>.Instance.Load<UnityEngine.Object>(path);
             if (!(obj is GameObject prefab))
             {
-                MelonLogger.Warning($"[AnimMerger] Ghost: prefab not found for res={res}");
+                Main.Log.LogWarning($"[AnimMerger] Ghost: prefab not found for res={res}");
                 return null;
             }
 
@@ -194,7 +193,7 @@ namespace PsychicKungfu_MelonMod.Utils
             var sa = ghost.GetComponentInChildren<SkeletonAnimation>(true);
             if (sa == null)
             {
-                MelonLogger.Warning(
+                Main.Log.LogWarning(
                     $"[AnimMerger] Ghost res={res}: no SkeletonAnimation found — destroying");
                 UnityEngine.Object.Destroy(ghost);
                 return null;
@@ -211,7 +210,7 @@ namespace PsychicKungfu_MelonMod.Utils
             ghost.SetActive(true);
 
             _ghosts[res] = sa;
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[AnimMerger] Ghost created: res={res} " +
                 $"bones={sa.Skeleton?.Bones?.Count} slots={sa.Skeleton?.Slots?.Count}");
             return sa;
@@ -247,7 +246,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     return target.FindAnimation(animName) != null;
 
                 // Inject
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[AnimMerger] Injecting '{animName}' | " +
                     $"source_res={entry.SourceRes} " +
                     $"duration={entry.Animation.Duration:F3}s " +
@@ -257,7 +256,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 object listObj = _animationsField.GetValue(target);
                 if (listObj == null)
                 {
-                    MelonLogger.Error("[AnimMerger] animations list is null on target skeleton.");
+                    Main.Log.LogError("[AnimMerger] animations list is null on target skeleton.");
                     return false;
                 }
 
@@ -265,7 +264,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     .GetMethod("Add", new[] { typeof(Spine.Animation) });
                 if (addMethod == null)
                 {
-                    MelonLogger.Error(
+                    Main.Log.LogError(
                         $"[AnimMerger] Add(Animation) not found on {listObj.GetType().FullName}.");
                     return false;
                 }
@@ -273,14 +272,14 @@ namespace PsychicKungfu_MelonMod.Utils
                 addMethod.Invoke(listObj, new object[] { entry.Animation });
 
                 bool success = target.FindAnimation(animName) != null;
-                MelonLogger.Msg(success
+                Main.Log.LogInfo(success
                     ? $"[AnimMerger] ✓ Injected '{animName}'"
                     : $"[AnimMerger] ✗ Add() called but FindAnimation still null for '{animName}'");
                 return success;
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"[AnimMerger] EnsureAnimation('{animName}') threw:\n{ex}");
+                Main.Log.LogError($"[AnimMerger] EnsureAnimation('{animName}') threw:\n{ex}");
                 return false;
             }
         }
@@ -297,7 +296,7 @@ namespace PsychicKungfu_MelonMod.Utils
             object listObj = _animationsField.GetValue(data);
             if (listObj == null)
             {
-                MelonLogger.Warning("[AnimMerger] animations field is null on skeleton.");
+                Main.Log.LogWarning("[AnimMerger] animations field is null on skeleton.");
                 return System.Linq.Enumerable.Empty<Spine.Animation>();
             }
 
@@ -317,7 +316,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 return EnumerateViaFields(listObj, items, countF);
             }
 
-            MelonLogger.Error(
+            Main.Log.LogError(
                 $"[AnimMerger] Cannot enumerate animations. " +
                 $"Type={listType.FullName} IEnumerable=false Items={items != null} Count={countF != null}");
             return System.Linq.Enumerable.Empty<Spine.Animation>();
@@ -420,14 +419,14 @@ namespace PsychicKungfu_MelonMod.Utils
 
                     if (EnsureAnimation(data, name))
                     {
-                        MelonLogger.Msg($"[AnimMerger] '{name}' injected — no swap needed");
+                        Main.Log.LogInfo($"[AnimMerger] '{name}' injected — no swap needed");
                         return;
                     }
 
                     var ghostSA = GetOrCreateGhost(entry.SourceRes);
                     if (ghostSA == null)
                     {
-                        MelonLogger.Warning(
+                        Main.Log.LogWarning(
                             $"[AnimMerger] Swap aborted: ghost unavailable for res={entry.SourceRes}");
                         return;
                     }
@@ -440,7 +439,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     // We temporarily swap roleId to the source res and restore it after.
                     int originalRoleId = (int)(_roleIdField?.GetValue(__instance) ?? 0);
                     _roleIdField?.SetValue(__instance, entry.SourceRes);
-                    MelonLogger.Msg(
+                    Main.Log.LogInfo(
                         $"[AnimMerger] Swap: m_roleId {originalRoleId} → {entry.SourceRes} (audio bank fix)");
 
                     // ── Movement fix: parent ghost to player root ─────────────────────────
@@ -460,7 +459,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     // via DOLocalRotateQuaternion on the SA's own transform).
                     ghostSA.transform.localRotation = originalSA.transform.localRotation;
 
-                    MelonLogger.Msg(
+                    Main.Log.LogInfo(
                         $"[AnimMerger] Swap: '{name}' | " +
                         $"player bones={data.Bones.Count} slots={data.Slots.Count} → " +
                         $"ghost res={entry.SourceRes} bones={entry.SourceBones} slots={entry.SourceSlots} | " +
@@ -470,17 +469,17 @@ namespace PsychicKungfu_MelonMod.Utils
                     var ghostRenderer = ghostSA.GetComponent<Renderer>();
 
                     if (playerRenderer != null) playerRenderer.enabled = false;
-                    else MelonLogger.Warning("[AnimMerger] Swap: player Renderer not found on SA GameObject");
+                    else Main.Log.LogWarning("[AnimMerger] Swap: player Renderer not found on SA GameObject");
 
                     if (ghostRenderer != null) ghostRenderer.enabled = true;
-                    else MelonLogger.Warning("[AnimMerger] Swap: ghost Renderer not found on SA GameObject");
+                    else Main.Log.LogWarning("[AnimMerger] Swap: ghost Renderer not found on SA GameObject");
 
-                    MelonLogger.Msg(
+                    Main.Log.LogInfo(
                         $"[AnimMerger] Swap: player renderer hidden={playerRenderer != null}, " +
                         $"ghost renderer shown={ghostRenderer != null}");
 
                     _animField.SetValue(__instance, ghostSA);
-                    MelonLogger.Msg("[AnimMerger] Swap: m_animation replaced with ghost SA");
+                    Main.Log.LogInfo("[AnimMerger] Swap: m_animation replaced with ghost SA");
 
                     _activeSwaps[__instance] = new SwapContext
                     {
@@ -494,7 +493,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 }
                 catch (Exception ex)
                 {
-                    MelonLogger.Error($"[AnimMerger] Swap Prefix threw:\n{ex}");
+                    Main.Log.LogError($"[AnimMerger] Swap Prefix threw:\n{ex}");
                 }
             }
 
@@ -507,7 +506,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 TrackEntry __result)
             {
                 // Always log so we can confirm Postfix is actually being called
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[AnimMerger] Postfix: name='{name}' isSkill={isSkill} " +
                     $"result={(__result != null ? $"OK duration={__result.Animation?.Duration:F3}s" : "NULL")} " +
                     $"hasSwap={_activeSwaps.ContainsKey(__instance)}");
@@ -519,14 +518,14 @@ namespace PsychicKungfu_MelonMod.Utils
                 {
                     // Play() returned null even on the ghost — animation was not found on
                     // its live SkeletonData. Restore immediately so player isn't stuck invisible.
-                    MelonLogger.Warning(
+                    Main.Log.LogWarning(
                         $"[AnimMerger] Swap: Play() returned null for '{name}' on ghost — " +
                         $"ghost SkeletonData may differ from prefab scan. Restoring immediately.");
                     RestoreSwap(__instance, name, ctx);
                     return;
                 }
 
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[AnimMerger] Swap: registering End callback for '{name}' " +
                     $"duration={__result.Animation?.Duration:F3}s");
 
@@ -540,7 +539,7 @@ namespace PsychicKungfu_MelonMod.Utils
                         var current = _animField?.GetValue(rc) as SkeletonAnimation;
                         if (current != ctx.GhostSA)
                         {
-                            MelonLogger.Msg(
+                            Main.Log.LogInfo(
                                 $"[AnimMerger] End callback for '{name}': " +
                                 $"m_animation already changed — skipping restore");
                             return;
@@ -550,7 +549,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     }
                     catch (Exception ex)
                     {
-                        MelonLogger.Error($"[AnimMerger] End callback for '{name}' threw:\n{ex}");
+                        Main.Log.LogError($"[AnimMerger] End callback for '{name}' threw:\n{ex}");
                     }
                 };
             }
@@ -563,13 +562,13 @@ namespace PsychicKungfu_MelonMod.Utils
             {
                 // Restore m_animation to the player's real skeleton
                 _animField.SetValue(rc, ctx.OriginalSA);
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[AnimMerger] Swap restored: '{animName}' ended — " +
                     $"m_animation back to player skeleton");
 
                 // Restore m_roleId so the player's own audio bank is used again
                 _roleIdField?.SetValue(rc, ctx.OriginalRoleId);
-                MelonLogger.Msg($"[AnimMerger] Restore: m_roleId → {ctx.OriginalRoleId}");
+                Main.Log.LogInfo($"[AnimMerger] Restore: m_roleId → {ctx.OriginalRoleId}");
 
                 // Detach ghost from the player's transform hierarchy.
                 // SetParent(null) makes it a scene root again; we must re-apply
@@ -578,14 +577,14 @@ namespace PsychicKungfu_MelonMod.Utils
                 {
                     ctx.GhostRoot.SetParent(null);
                     UnityEngine.Object.DontDestroyOnLoad(ctx.GhostRoot.gameObject);
-                    MelonLogger.Msg("[AnimMerger] Restore: ghost unparented, DontDestroyOnLoad re-applied");
+                    Main.Log.LogInfo("[AnimMerger] Restore: ghost unparented, DontDestroyOnLoad re-applied");
                 }
 
                 // Hide ghost, show player
                 if (ctx.GhostRenderer != null) ctx.GhostRenderer.enabled = false;
                 if (ctx.PlayerRenderer != null) ctx.PlayerRenderer.enabled = true;
 
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[AnimMerger] Restore: ghost hidden={ctx.GhostRenderer != null}, " +
                     $"player shown={ctx.PlayerRenderer != null}");
             }

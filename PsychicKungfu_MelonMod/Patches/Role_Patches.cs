@@ -1,9 +1,9 @@
 ﻿using DBLoad;
 using Fight;
 using HarmonyLib;
-using MelonLoader;
 using PsychicKungfu_MelonMod.Utils;
 using Spine;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -27,9 +27,9 @@ namespace PsychicKungfu_MelonMod.Patches
         {
             if (!__instance.m_actives.Any(x => x.m_id == 502790))
             {
-                __instance.m_actives.Add(new ActiveSkill(502790, __instance));
-                __instance.m_actives.Add(new ActiveSkill(500180, __instance));
-                __instance.m_actives.Add(new ActiveSkill(503600, __instance));
+                //__instance.m_actives.Add(new ActiveSkill(502790, __instance));
+                //__instance.m_actives.Add(new ActiveSkill(500180, __instance));
+                //__instance.m_actives.Add(new ActiveSkill(503600, __instance));
                 //Great Sun Buddha Palm
                 //Vajra Chan
                 //Mountain River Zen
@@ -40,6 +40,7 @@ namespace PsychicKungfu_MelonMod.Patches
                 //Sweep the Eight Wastes
                 //Great Freedom Bitter (passive trigger on damage)
             }
+            if (!Helpers.PlayerHasGlobalBuff(6942)) return;
             Helpers.SetPrivateField<int>(__instance, "m_move", 8);
             __instance.m_passives.Sort((a, b) =>
             {
@@ -49,7 +50,23 @@ namespace PsychicKungfu_MelonMod.Patches
             });
             Helpers.SetPrivateField<string>(__instance.m_data, "m_chengHao", "Realm of the Gods");
 
-        } 
+        }
+
+        [HarmonyPatch(typeof(FightWindow), "SetSkill")]
+        [HarmonyPrefix]
+        public static void PassiveSort(FightWindow __instance, Role role)
+        {
+            if (role == null) return;
+            if (!Helpers.IsPlayer(role)) return;
+            if (SkillReplacer._enabled)
+            {
+                SkillReplacer.ApplyReplacement(role);
+            }
+            else
+            {
+                SkillReplacer.RestoreOriginal(role);
+            }
+        }
 
         [HarmonyPatch(typeof(SaveData), "GetWholePassives")]
         [HarmonyPostfix]

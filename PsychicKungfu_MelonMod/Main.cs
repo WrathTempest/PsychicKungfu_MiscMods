@@ -1,4 +1,6 @@
-﻿using MelonLoader;
+﻿using BepInEx;
+using BepInEx.Logging;
+using HarmonyLib;
 using PsychicKungfu_MelonMod;
 using PsychicKungfu_MelonMod.Utils;
 using System;
@@ -10,28 +12,33 @@ using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(PsychicKungfu_MelonMod.Main), PsychicKungfu_MelonMod.Main.PluginName, PsychicKungfu_MelonMod.Main.PluginVersion, "izayoi")]
-[assembly: MelonGame("金十四工作室", "JinGu")]
-
 namespace PsychicKungfu_MelonMod
 {
-    public class Main : MelonMod
+    [BepInPlugin(MyGUID, PluginName, VersionString)]
+    public class Main : BaseUnityPlugin
     {
-        public const string PluginName = "Personal Mod";
-        public const string PluginVersion = "1.0.0";
+        private const string MyGUID = "com.Jingu.MiscMods";
+        private const string PluginName = "Jingu_MiscMods";
+        private const string VersionString = "1.0.0";
+        public static readonly string pluginDir = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        private static readonly Harmony Harmony = new Harmony(MyGUID);
+        public static ManualLogSource Log = new ManualLogSource(PluginName);
 
-        //internal static MelonLogger.Instance Log = null;
-
-        public override void OnInitializeMelon()
+        private void Awake()
         {
+            Log = Logger;
             DBLoadManager.DumpAll(DumpLanguage.English);
             DBLoadManager.LoadOverrides();
-            MelonLogger.Msg($"Trying to patch...");
-            HarmonyInstance.PatchAll();
+            Harmony.PatchAll();
             AnimationMerger.Initialize();
-            MelonLogger.Msg($"Succesfully applied patches!");
+            SkillReplacer.Initialize(Config);
+            Logger.LogInfo($"PluginName: {PluginName}, VersionString: {VersionString} is loaded.");         
 
-            
+        }
+
+        private void Update()
+        {
+            SkillReplacer.Update();
         }
 
 

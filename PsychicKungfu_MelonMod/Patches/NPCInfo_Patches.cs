@@ -1,6 +1,5 @@
 ﻿using DBLoad;
 using HarmonyLib;
-using MelonLoader;
 using PsychicKungfu_MelonMod.Utils;
 using UnityEngine;
 
@@ -14,6 +13,7 @@ namespace PsychicKungfu_MelonMod.Patches
         public static void MinimumFavor(NpcInfo __instance, ref int value)
         {
             int delta = value - __instance.Favo;
+            if (!Helpers.PlayerHasGlobalBuff(6942)) return;
             if (delta < 0) return;
             if (delta < 30)
             {

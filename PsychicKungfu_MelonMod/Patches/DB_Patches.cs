@@ -1,6 +1,5 @@
 ﻿using DBLoad;
 using HarmonyLib;
-using MelonLoader;
 
 namespace PsychicKungfu_MelonMod.Patches
 {

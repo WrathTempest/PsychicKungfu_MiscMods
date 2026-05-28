@@ -1,5 +1,4 @@
 ﻿using DBLoad;
-using MelonLoader;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,7 +16,7 @@ namespace PsychicKungfu_MelonMod.Utils
     {
         public static bool IsPlayer(Role role)
         {
-            return (role.m_data.m_id > 0 && role.m_data.m_id < 7);
+            return (role is LeaderRole);
         }
 
         public static bool HasBuff(Role role, int id)
@@ -35,7 +34,7 @@ namespace PsychicKungfu_MelonMod.Utils
             List<int> ids = new List<int>();
             foreach (PassiveSkill passive in role.m_passives)
             {
-                //MelonLogger.Msg($"Role ID: {role.m_data.m_id} Current passive ID: {passive.m_id}");
+                //Main.Log.LogInfo($"Role ID: {role.m_data.m_id} Current passive ID: {passive.m_id}");
 
                 ids.Add(passive.m_id);
             }
@@ -105,7 +104,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (field == null)
             {
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[Helpers] Failed GetPrivateField<{typeof(T).Name}> " +
                     $"Field='{fieldName}' Type='{instance.GetType().FullName}'");
 
@@ -150,7 +149,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (field == null)
             {
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[Helpers] Failed SetPrivateField<{typeof(T).Name}> " +
                     $"Field='{fieldName}' Type='{instance.GetType().FullName}'");
 
@@ -205,7 +204,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 type = type.BaseType;
             }
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[Helpers] Failed GetPrivateProperty<{typeof(T).Name}> " +
                 $"Property='{propertyName}' " +
                 $"Type='{instance.GetType().FullName}'");
@@ -258,7 +257,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 type = type.BaseType;
             }
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[Helpers] Failed SetPrivateProperty<{typeof(T).Name}> " +
                 $"Property='{propertyName}' " +
                 $"Type='{instance.GetType().FullName}'");
@@ -297,7 +296,7 @@ namespace PsychicKungfu_MelonMod.Utils
         {
             string caller = GetRealCaller(skipFrames + 1);
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[Helpers] {message} Called by: {caller}");
         }
 
@@ -319,7 +318,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (method == null)
             {
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[Helpers] Failed Call Method='{methodName}' " +
                     $"Type='{type.FullName}'");
 
@@ -328,7 +327,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     methodName);
             }
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[Helpers] Call Method='{methodName}' " +
                 $"Type='{type.FullName}'");
 
@@ -351,7 +350,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (method == null)
             {
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[Helpers] Failed Call Method='{methodName}' " +
                     $"Type='{type.FullName}'");
 
@@ -360,7 +359,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     methodName);
             }
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[Helpers] Call Method='{methodName}' " +
                 $"Type='{type.FullName}'");
 
@@ -378,7 +377,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (method == null)
             {
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"[Helpers] Failed CallStatic Method='{methodName}' " +
                     $"Type='{type.FullName}'");
 
@@ -387,7 +386,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     methodName);
             }
 
-            MelonLogger.Msg(
+            Main.Log.LogInfo(
                 $"[Helpers] CallStatic Method='{methodName}' " +
                 $"Type='{type.FullName}'");
 

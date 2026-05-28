@@ -1,6 +1,5 @@
 ﻿using DBLoad;
 using HarmonyLib;
-using MelonLoader;
 using PsychicKungfu_MelonMod.Utils;
 using System;
 using System.Reflection;
@@ -29,7 +28,7 @@ namespace PsychicKungfu_MelonMod.Patches
                 int num2 = m_selectDaZao.m_num[i];
                 if (saveData.GetItemNum(num) < num2)
                 {
-                    MelonLogger.Msg($"Adding insufficient items... Item ID: {num}, Item Amount: {num2}");
+                    Main.Log.LogInfo($"Adding insufficient items... Item ID: {num}, Item Amount: {num2}");
                     saveData.ChangeItem(num, num2*20, false);
                 }
                 
@@ -39,7 +38,7 @@ namespace PsychicKungfu_MelonMod.Patches
     BindingFlags.NonPublic |
     BindingFlags.Public))
             {
-                MelonLogger.Msg($"NESTED: {nested.FullName}");
+                Main.Log.LogInfo($"NESTED: {nested.FullName}");
 
                 foreach (var m in nested.GetMethods(
                     BindingFlags.Instance |
@@ -47,7 +46,7 @@ namespace PsychicKungfu_MelonMod.Patches
                     BindingFlags.Public |
                     BindingFlags.NonPublic))
                 {
-                    MelonLogger.Msg($"    {m.Name}");
+                    Main.Log.LogInfo($"    {m.Name}");
                 }
             }
         }
@@ -64,7 +63,7 @@ namespace PsychicKungfu_MelonMod.Patches
 
                 if (nestedType == null)
                 {
-                    MelonLogger.Msg("Failed to find nested type");
+                    Main.Log.LogInfo("Failed to find nested type");
                     return null;
                 }
 
@@ -76,11 +75,11 @@ namespace PsychicKungfu_MelonMod.Patches
 
                 if (method == null)
                 {
-                    MelonLogger.Msg("Failed to find target method");
+                    Main.Log.LogInfo("Failed to find target method");
                     return null;
                 }
 
-                MelonLogger.Msg(
+                Main.Log.LogInfo(
                     $"Patching: {nestedType.FullName}.{method.Name}");
 
                 return method;
@@ -100,7 +99,7 @@ namespace PsychicKungfu_MelonMod.Patches
 
                     if (windowField == null)
                     {
-                        MelonLogger.Msg("Failed to get <>4__this");
+                        Main.Log.LogInfo("Failed to get <>4__this");
                         return;
                     }
 
@@ -109,7 +108,7 @@ namespace PsychicKungfu_MelonMod.Patches
 
                     if (window == null)
                     {
-                        MelonLogger.Msg("Window was null");
+                        Main.Log.LogInfo("Window was null");
                         return;
                     }
 
@@ -134,7 +133,7 @@ namespace PsychicKungfu_MelonMod.Patches
 
                         if (saveData.GetItemNum(num) < num2)
                         {
-                            MelonLogger.Msg(
+                            Main.Log.LogInfo(
                                 $"Adding insufficient items... " +
                                 $"Item ID: {num}, " +
                                 $"Item Amount: {num2}");
@@ -148,7 +147,7 @@ namespace PsychicKungfu_MelonMod.Patches
                 }
                 catch (Exception ex)
                 {
-                    MelonLogger.Error(ex.ToString());
+                    Main.Log.LogInfo(ex.ToString());
                 }
             }
         }
