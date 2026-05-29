@@ -14,28 +14,23 @@ namespace PsychicKungfu_MelonMod
     public static class SkillReplacer
     {
         // ─────────────────────────────────────────────────────────────
-        // CONFIG
+        // CONFIG & STATE
         // ─────────────────────────────────────────────────────────────
-
         public static ConfigEntry<string> ReplaceSkillsConfig;
 
-        // Example:
-        // 500180,500181,500182
+        public static int _currentPage = 0;
+        public static bool _keyPressed = false;
 
-        // ─────────────────────────────────────────────────────────────
-        // STATE
-        // ─────────────────────────────────────────────────────────────
+        public static FightWindow _fightWindowInstance;
+        public static Role _cachedRole;
 
-        public static bool _enabled;
-
-        // role instance id -> original active skills
-        public static readonly Dictionary<int, List<ActiveSkill>> _originalSkills =
+        // Keeps track of the master list (Originals + Appended Config Skills)
+        public static readonly Dictionary<int, List<ActiveSkill>> _masterSkills =
             new Dictionary<int, List<ActiveSkill>>();
 
         // ─────────────────────────────────────────────────────────────
         // INIT
         // ─────────────────────────────────────────────────────────────
-
         public static void Initialize(ConfigFile config)
         {
             ReplaceSkillsConfig = config.Bind(
@@ -44,152 +39,138 @@ namespace PsychicKungfu_MelonMod
                 "500180",
                 "Comma separated replacement skill IDs.\nExample: 500180,500181,500182");
 
-            Debug.Log("[SkillReplacer] Initialized");
+            ReplaceSkillsConfig.SettingChanged += OnConfigHotReload;
+            Debug.Log("[SkillReplacer] Initialized.");
+        }
+
+        private static void OnConfigHotReload(object sender, EventArgs e)
+        {
+            _masterSkills.Clear();
+            _currentPage = 0;
+            Debug.Log($"[SkillReplacer] Config hot-swapped! Cleared master skill cache.");
         }
 
         // ─────────────────────────────────────────────────────────────
-        // UPDATE
+        // UPDATE (Key Detection & UI Force Refresh via Traverse)
         // ─────────────────────────────────────────────────────────────
-
         public static void Update()
         {
             if (Keyboard.current != null && Keyboard.current.leftCtrlKey.wasPressedThisFrame)
             {
-                _enabled = !_enabled;
+                _keyPressed = true;
 
-                Main.Log.LogInfo(
-                    $"[SkillReplacer] " +
-                    $"{(_enabled ? "ENABLED" : "DISABLED")}");
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // PARSE CONFIG
-        // ─────────────────────────────────────────────────────────────
-
-        public static List<int> GetConfiguredSkillIds()
-        {
-            List<int> ids = new List<int>();
-
-            try
-            {
-                string raw = ReplaceSkillsConfig.Value;
-
-                if (string.IsNullOrWhiteSpace(raw))
-                    return ids;
-
-                string[] split =
-                    raw.Split(
-                        new[] { ',' },
-                        StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (string s in split)
+                if (_fightWindowInstance != null && _cachedRole != null)
                 {
-                    if (int.TryParse(s.Trim(), out int id))
-                    {
-                        ids.Add(id);
-                    }
-                    else
-                    {
-                        Debug.LogWarning(
-                            $"[SkillReplacer] Invalid skill id: {s}");
-                    }
+                    // Use Traverse to invoke the PRIVATE method 'SetSkill'
+                    Traverse.Create(_fightWindowInstance).Method("SetSkill", _cachedRole).GetValue();
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogError(ex);
-            }
-
-            return ids;
         }
 
         // ─────────────────────────────────────────────────────────────
-        // APPLY
+        // INITIALIZATION: APPEND CONFIG SKILLS
         // ─────────────────────────────────────────────────────────────
-
-        public static void ApplyReplacement(Role role)
+        // CALL THIS METHOD INSIDE YOUR PLAYER INITIALIZATION PATCH
+        public static void AppendConfigSkills(Role role)
         {
-            if (role == null)
-                return;
+            if (role == null || role.m_actives == null) return;
 
-            if (role.m_actives == null)
-                return;
+            // 1. Use .Distinct() to immediately remove duplicates inside the config string itself
+            List<int> ids = GetConfiguredSkillIds().Distinct().ToList();
+            if (ids.Count == 0) return;
 
-            int key = role.GetHashCode();
+            List<ActiveSkill> workingList = role.m_actives.ToList();
 
-            // save original once
-            if (!_originalSkills.ContainsKey(key))
+            // 2. Build a list of skill IDs the player already has in their hotbar
+            HashSet<int> existingIds = new HashSet<int>(workingList.Select(s => s.m_id));
+
+            foreach (int skillId in ids)
             {
-                _originalSkills[key] =
-                    role.m_actives.ToList();
+                // 3. Skip if the player already has this skill equipped base-game
+                if (existingIds.Contains(skillId))
+                {
+                    Debug.Log($"[SkillReplacer] Skipped duplicate skill {skillId} (Player already has it).");
+                    continue;
+                }
 
-                Debug.Log(
-                    "[SkillReplacer] Saved original skills");
-            }
-
-            List<int> ids = GetConfiguredSkillIds();
-
-            if (ids.Count == 0)
-            {
-                Debug.LogWarning(
-                    "[SkillReplacer] No replacement skills configured");
-                return;
-            }
-
-            int max =
-                Mathf.Min(
-                    6,
-                    Mathf.Min(
-                        role.m_actives.Count,
-                        ids.Count));
-
-            for (int i = 0; i < max; i++)
-            {
                 try
                 {
-                    int skillId = ids[i];
                     if (Skill.Get(skillId) != null)
                     {
-                        role.m_actives[i] = new ActiveSkill(skillId, role);
-                        Debug.Log($"[SkillReplacer] Slot {i} -> {skillId}");
-                    }            
-                    
+                        workingList.Add(new ActiveSkill(skillId, role));
+                        existingIds.Add(skillId); // Track it so it doesn't get added again
+                        Debug.Log($"[SkillReplacer] Appended unique skill {skillId} to player active skills.");
+                    }
                 }
                 catch (Exception ex)
                 {
                     Debug.LogError(ex);
                 }
             }
-        }
 
-        // ─────────────────────────────────────────────────────────────
-        // RESTORE
-        // ─────────────────────────────────────────────────────────────
-
-        public static void RestoreOriginal(Role role)
-        {
-            if (role == null)
-                return;
+            // Write back to the role
+            role.m_actives = workingList.ToList();
 
             int key = role.GetHashCode();
+            _masterSkills.Remove(key);
+        }
 
-            if (!_originalSkills.TryGetValue(key, out var original))
-                return;
+        // ─────────────────────────────────────────────────────────────
+        // ROTATION LOGIC
+        // ─────────────────────────────────────────────────────────────
+        public static void ApplyRotation(Role role)
+        {
+            if (role == null || role.m_actives == null) return;
+            int key = role.GetHashCode();
 
-            int max =
-                Mathf.Min(
-                    role.m_actives.Count,
-                    original.Count);
-
-            for (int i = 0; i < max; i++)
+            // 1. Capture the master list right after your initialization patch has run
+            if (!_masterSkills.ContainsKey(key))
             {
-                role.m_actives[i] = original[i];
+                _masterSkills[key] = role.m_actives.ToList();
+                Debug.Log($"[SkillReplacer] Master list cached with {_masterSkills[key].Count} total skills.");
             }
 
-            Debug.Log(
-                "[SkillReplacer] Restored original skills");
+            List<ActiveSkill> masterList = _masterSkills[key];
+            int totalSkills = masterList.Count;
+
+            if (totalSkills <= 6) return;
+
+            int totalPages = Mathf.CeilToInt((float)totalSkills / 6f);
+
+            if (_keyPressed)
+            {
+                _currentPage = (_currentPage + 1) % totalPages;
+                _keyPressed = false;
+                Debug.Log($"[SkillReplacer] Switched to Page {_currentPage + 1}/{totalPages}");
+            }
+
+            int offset = _currentPage * 6;
+
+            // 2. Map data dynamically back into the active hotbar slots
+            // If m_actives is an array, we can use a standard loop to mutate its indices
+            for (int i = 0; i < role.m_actives.Count; i++)
+            {
+                int targetMasterIndex = (i + offset) % totalSkills;
+                role.m_actives[i] = masterList[targetMasterIndex];
+            }
         }
-        
+
+        public static List<int> GetConfiguredSkillIds()
+        {
+            List<int> ids = new List<int>();
+            try
+            {
+                string raw = ReplaceSkillsConfig.Value;
+                if (string.IsNullOrWhiteSpace(raw)) return ids;
+
+                string[] split = raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string s in split)
+                {
+                    if (int.TryParse(s.Trim(), out int id)) ids.Add(id);
+                }
+            }
+            catch (Exception ex) { Debug.LogError(ex); }
+            return ids;
+        }
     }
 }

@@ -32,7 +32,7 @@ namespace PsychicKungfu_MelonMod.Patches
             if (!__result) return;
             WuXueData data = WuXue.Get(id);
             if (data == null) return;
-            __instance.AddWuXueExp(id, data.m_exp * 20, true);
+            //__instance.AddWuXueExp(id, data.m_exp * 20, true);
         }
     }
 }

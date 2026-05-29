@@ -11,7 +11,58 @@ namespace PsychicKungfu_MelonMod.Utils
 {
     public static class AnimationMerger
     {
+        // ── 1. Standard Mode: Full-String Exact Matches (Case-Insensitive) ───
+        // If a slot name matches any of these strings EXACTLY, it will bypass the shadow overlay.
+        public static readonly HashSet<string> VfxExactNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+        };
+
+        // ── 2. Standard Mode: Partial Substring Matches (Case-Insensitive) ───
+        // If a slot name CONTAINS any of these keywords, it will bypass the shadow overlay.
+        public static readonly List<string> VfxKeywords = new List<string>
+        {
+            "guang", "star", "atk", "eff", "vfx", "qi", "dun", "bo", "lun", "dao", "jian"
+        };
+
+        // ── 3. Opposite Mode: Full-String Exact Matches (Case-Insensitive) ───
+        // TRIGGER: If a skeleton contains ANY slot matching this collection, the script flips
+        // to Opposite Mode. ONLY the elements matching these rules are blacked out; all else stays clear.
+        public static readonly HashSet<string> ExclusiveBlackoutNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+
+        };
+
+        // ── 4. Opposite Mode: Partial Substring Matches (Case-Insensitive) ───
+        // TRIGGER: If a skeleton contains ANY slot name containing these keywords, it also triggers
+        // Opposite Mode. Only slots matching these keywords or the exact list above will be blacked out.
+        // NOTE: This list will be dynamically appended with slots that have a global occurrence count of 1.
+        public static readonly List<string> ExclusiveBlackoutKeywords = new List<string>
+        {
+             "yueque",
+        };
+
+        // ── 5. Independent Blackout Mode: Full-String Exact Matches Only (Case-Insensitive) ───
+        // Slots matching these strings exactly will be blacked out across modes, but will NOT 
+        // flip a skeleton into full Opposite Mode or auto-whitelist remaining slots into VfxExactNames.
+        public static readonly HashSet<string> IndependentBlackoutNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "t", "yan", "st"
+        };
+
         // ── Data structures ───────────────────────────────────────────────────
+
+        private static readonly Dictionary<string, PoolEntry> _pool =
+            new Dictionary<string, PoolEntry>(StringComparer.Ordinal);
+
+        private static readonly Dictionary<SkeletonData, HashSet<string>> _injected =
+            new Dictionary<SkeletonData, HashSet<string>>();
+
+        private static readonly Dictionary<int, SkeletonAnimation> _ghosts =
+            new Dictionary<int, SkeletonAnimation>();
+
+        // Central collection to store and count unique slot frequencies across all scanned resources
+        private static readonly Dictionary<string, int> _globalSlotCounts =
+            new Dictionary<string, int>(StringComparer.Ordinal);
 
         private struct PoolEntry
         {
@@ -20,19 +71,6 @@ namespace PsychicKungfu_MelonMod.Utils
             public int SourceSlots;
             public int SourceRes;
         }
-
-        // name → first skeleton in scan that had this animation
-        private static readonly Dictionary<string, PoolEntry> _pool =
-            new Dictionary<string, PoolEntry>(StringComparer.Ordinal);
-
-        // Per-skeleton: names successfully injected (compatible case, no swap needed)
-        private static readonly Dictionary<SkeletonData, HashSet<string>> _injected =
-            new Dictionary<SkeletonData, HashSet<string>>();
-
-        // res → persistent invisible ghost instance.
-        // Renderer is OFF by default; Prefix enables it for the duration of the skill.
-        private static readonly Dictionary<int, SkeletonAnimation> _ghosts =
-            new Dictionary<int, SkeletonAnimation>();
 
         // ── Cached reflection ─────────────────────────────────────────────────
 
@@ -48,18 +86,105 @@ namespace PsychicKungfu_MelonMod.Utils
 
         private static readonly FieldInfo _roleIdField =
             typeof(RoleController).GetField(
-        "m_roleId",
-        BindingFlags.NonPublic | BindingFlags.Instance);
+                "m_roleId",
+                BindingFlags.NonPublic | BindingFlags.Instance);
 
-        // ── Initialization ────────────────────────────────────────────────────
+        // ── OrientationSyncer ─────────────────────────────────────────────────
 
+        private class OrientationSyncer : MonoBehaviour
+        {
+            public SkeletonAnimation Source;
+            public SkeletonAnimation Target;
+
+            public void Sync()
+            {
+                if (Source == null || Target == null) return;
+
+                // Copy both spatial orientation options to catch models using transform-based flipping
+                Target.transform.localRotation = Source.transform.localRotation;
+                Target.transform.localScale = Source.transform.localScale;
+
+                if (Target.Skeleton != null && Source.Skeleton != null)
+                {
+                    Target.Skeleton.ScaleX = Source.Skeleton.ScaleX;
+                    Target.Skeleton.ScaleY = Source.Skeleton.ScaleY;
+
+                    // Force internal matrix recalculation so orientation changes instantly
+                    Target.Skeleton.UpdateWorldTransform();
+                }
+            }
+
+            // Sync on LateUpdate to ensure we run AFTER the base controller calculates its positioning rules
+            private void LateUpdate() => Sync();
+        }
+
+        // ── Initialization & Slot Collection ──────────────────────────────────
+
+        public static void EnhanceQiAura(SkeletonAnimation mainAnim, float targetR, float targetG, float targetB, float boneScale = 1.4f)
+        {
+            if (mainAnim == null || mainAnim.Skeleton == null) return;
+
+            // 1. Find the active skin
+            var currentSkin = mainAnim.Skeleton.Skin ?? mainAnim.Skeleton.Data.DefaultSkin;
+            if (currentSkin == null) return;
+
+            // 2. Find all slot indices that contain an attachment named "qi"
+            System.Collections.Generic.HashSet<int> qiSlotIndices = new System.Collections.Generic.HashSet<int>();
+            foreach (var entry in currentSkin.Attachments)
+            {
+                if (entry.Name == "qi")
+                {
+                    qiSlotIndices.Add(entry.SlotIndex);
+                }
+            }
+
+            // Safety check: if no "qi" attachment is active in this skin, exit early
+            if (qiSlotIndices.Count == 0) return;
+
+            // 3. Subscribe to the callback using the resolved slot indices
+            mainAnim.UpdateLocal += (anim) =>
+            {
+                foreach (int index in qiSlotIndices)
+                {
+                    // Direct array lookup using the index we verified from the skin
+                    var slot = anim.Skeleton.Slots.Items[index];
+                    if (slot == null) continue;
+
+                    // Calculate the current animation's fading intensity dynamically
+                    float intensity = UnityEngine.Mathf.Max(slot.R, slot.G, slot.B) * slot.A;
+
+                    // Apply your custom color, scaled by the animation's natural curve
+                    slot.R = targetR * intensity;
+                    slot.G = targetG * intensity;
+                    slot.B = targetB * intensity;
+
+                    // Scale the slot's bone dynamically
+                    if (slot.Bone != null)
+                    {
+                        slot.Bone.ScaleX = boneScale;
+                        slot.Bone.ScaleY = boneScale;
+                    }
+                }
+            };
+        }
         public static void Initialize()
         {
+            for (int i = 0; i < 30; i++)
+            {
+                IndependentBlackoutNames.Add(i.ToString());
+                IndependentBlackoutNames.Add("q" + i.ToString());
+                IndependentBlackoutNames.Add("l" + i.ToString());
+                IndependentBlackoutNames.Add("r" + i.ToString());
+                IndependentBlackoutNames.Add("s" + i.ToString());
+                IndependentBlackoutNames.Add("g" + i.ToString());
+                IndependentBlackoutNames.Add("f" + i.ToString());
+                IndependentBlackoutNames.Add("y" + i.ToString());
+                IndependentBlackoutNames.Add("d" + i.ToString());
+            }
             if (_animationsField == null)
             {
                 Main.Log.LogError(
-                    "[AnimMerger] SkeletonData.animations field not found — " +
-                    "Spine version mismatch or stripping. Aborting.");
+                    "[AnimMerger] SkeletonData.animations field not found. Aborting.");
                 return;
             }
 
@@ -82,6 +207,9 @@ namespace PsychicKungfu_MelonMod.Utils
             seen.Clear();
             int scanned = 0, skipped = 0, failed = 0;
 
+            // Temporary map tracking which unique slots belong to each unique resource ID (m_res)
+            var resToSlots = new Dictionary<int, List<string>>();
+
             foreach (var kv in Character.Dic)
             {
                 try
@@ -92,10 +220,8 @@ namespace PsychicKungfu_MelonMod.Utils
 
                     string path = $"Prefabs/Roles/{cd.m_res}/{cd.m_res}";
                     var obj = Singleton<ResManager>.Instance.Load<UnityEngine.Object>(path);
-                    var prefab = obj as GameObject;
-                    if (prefab == null)
+                    if (!(obj is GameObject prefab))
                     {
-                        Main.Log.LogWarning($"[AnimMerger] Not a GameObject: '{path}'");
                         skipped++;
                         continue;
                     }
@@ -105,6 +231,20 @@ namespace PsychicKungfu_MelonMod.Utils
 
                     SkeletonData data = sa.skeletonDataAsset.GetSkeletonData(true);
                     if (data == null) { skipped++; continue; }
+
+                    // Collect, map, and count all slot occurrences globally
+                    var currentResSlots = new List<string>();
+                    for (int i = 0; i < data.Slots.Count; i++)
+                    {
+                        var slotData = data.Slots.Items[i];
+                        if (slotData != null && !string.IsNullOrEmpty(slotData.Name))
+                        {
+                            _globalSlotCounts.TryGetValue(slotData.Name, out int count);
+                            _globalSlotCounts[slotData.Name] = count + 1;
+                            currentResSlots.Add(slotData.Name);
+                        }
+                    }
+                    resToSlots[cd.m_res] = currentResSlots;
 
                     int srcBones = data.Bones.Count;
                     int srcSlots = data.Slots.Count;
@@ -127,9 +267,6 @@ namespace PsychicKungfu_MelonMod.Utils
                         }
                     }
 
-                    Main.Log.LogInfo(
-                        $"[AnimMerger] res={cd.m_res} bones={srcBones} slots={srcSlots} " +
-                        $"+{added} new (enum_path={enumPath}) pool_total={_pool.Count}");
                     scanned++;
                 }
                 catch (Exception ex)
@@ -140,22 +277,154 @@ namespace PsychicKungfu_MelonMod.Utils
             }
 
             Main.Log.LogInfo(
-                $"[AnimMerger] Scan complete — " +
-                $"scanned={scanned} skipped={skipped} failed={failed} pool={_pool.Count}");
+                $"[AnimMerger] Scan complete — scanned={scanned} skipped={skipped} failed={failed} pool={_pool.Count}");
+
+            // 1. Log the full collection overview 
+            //LogGlobalSlotInventory();
+
+            // 2. Automatically feed strings with count == 1 into ExclusiveBlackoutKeywords
+            //AutoPopulateExclusiveKeywords();
+
+            // 3. Process relations between blackout slots and their source skeletons to auto-whitelist remainder slots
+            ProcessBlackoutResForVfxWhitelisting(resToSlots);
         }
 
-        // ── Ghost skeleton management ──────────────────────────────────────────
-        //
-        // Ghosts are persistent invisible GameObjects, one per unique res value.
-        // All Renderers are disabled at creation time. The Prefix enables the
-        // ghost's renderer and disables the player's renderer for the skill duration,
-        // then the End callback reverses this.
-        //
-        // SkeletonAnimation stays enabled at all times so its AnimationState is
-        // always ready to play — no initialization delay when a skill fires.
-        //
-        // All other MonoBehaviours (AI, movement, audio, etc.) are disabled so
-        // the ghost has zero gameplay presence between uses.
+        // Automatically filters unique slot names into the keywords list
+        private static void AutoPopulateExclusiveKeywords()
+        {
+            try
+            {
+                int addedCount = 0;
+                foreach (var kvp in _globalSlotCounts)
+                {
+                    if (kvp.Value == 1)
+                    {
+                        if (!ExclusiveBlackoutKeywords.Contains(kvp.Key))
+                        {
+                            ExclusiveBlackoutKeywords.Add(kvp.Key);
+                            addedCount++;
+                        }
+                    }
+                }
+                Main.Log.LogInfo($"[AnimMerger] Automatically processed and assigned {addedCount} unique slot names (global count = 1) into ExclusiveBlackoutKeywords.");
+            }
+            catch (Exception ex)
+            {
+                Main.Log.LogWarning($"[AnimMerger] AutoPopulateExclusiveKeywords failed: {ex.Message}");
+            }
+        }
+
+        // Checks each scanned res; if it contains any blackout slots, adds all its other non-blacked-out slots to VfxExactNames
+        private static void ProcessBlackoutResForVfxWhitelisting(Dictionary<int, List<string>> resToSlots)
+        {
+            try
+            {
+                int totalAdded = 0;
+
+                foreach (var kvp in resToSlots)
+                {
+                    int resId = kvp.Key;
+                    List<string> slots = kvp.Value;
+                    bool resHasBlackoutTrigger = false;
+
+                    // Pass 1: Determine if this resource contains any blacked-out slots (IndependentBlackoutNames IS EXCLUDED HERE)
+                    for (int i = 0; i < slots.Count; i++)
+                    {
+                        string slotName = slots[i];
+
+                        // Check exact names map
+                        if (ExclusiveBlackoutNames.Contains(slotName))
+                        {
+                            resHasBlackoutTrigger = true;
+                            break;
+                        }
+
+                        // Check keyword partial substrings
+                        for (int j = 0; j < ExclusiveBlackoutKeywords.Count; j++)
+                        {
+                            if (slotName.IndexOf(ExclusiveBlackoutKeywords[j], StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                resHasBlackoutTrigger = true;
+                                break;
+                            }
+                        }
+
+                        if (resHasBlackoutTrigger) break;
+                    }
+
+                    // Pass 2: If triggered, whitelist every remaining slot that isn't itself part of the blackout rule
+                    if (resHasBlackoutTrigger)
+                    {
+                        for (int i = 0; i < slots.Count; i++)
+                        {
+                            string slotName = slots[i];
+                            bool isThisSlotBlackedOut = ExclusiveBlackoutNames.Contains(slotName);
+
+                            if (!isThisSlotBlackedOut)
+                            {
+                                for (int j = 0; j < ExclusiveBlackoutKeywords.Count; j++)
+                                {
+                                    if (slotName.IndexOf(ExclusiveBlackoutKeywords[j], StringComparison.OrdinalIgnoreCase) >= 0)
+                                    {
+                                        isThisSlotBlackedOut = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // If it's a normal skeleton part on a blackout skeleton, add it to VfxExactNames to keep it clear
+                            if (!isThisSlotBlackedOut)
+                            {
+                                if (VfxExactNames.Add(slotName))
+                                {
+                                    totalAdded++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (totalAdded > 0)
+                {
+                    Main.Log.LogInfo($"[AnimMerger] Cross-reference check complete. Dynamically appended {totalAdded} non-blackout slots into VfxExactNames from skeletons operating on Opposite Mode.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Main.Log.LogWarning($"[AnimMerger] ProcessBlackoutResForVfxWhitelisting failed: {ex.Message}");
+            }
+        }
+
+        // Aggregated Slot Log Generator
+        private static void LogGlobalSlotInventory()
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine();
+                sb.AppendLine($"========================================================================");
+                sb.AppendLine($"[AnimMerger] GLOBAL SLOT NAME INVENTORY ({_globalSlotCounts.Count} Unique Slots Across All Prefabs):");
+                sb.AppendLine($"========================================================================");
+
+                var sortedSlots = new List<string>(_globalSlotCounts.Keys);
+                sortedSlots.Sort();
+
+                foreach (var slotName in sortedSlots)
+                {
+                    int count = _globalSlotCounts[slotName];
+                    sb.AppendLine($"  • Slot: '{slotName}'  [Occurrences/Duplicates: {count}]");
+                }
+                sb.AppendLine($"========================================================================");
+
+                Main.Log.LogInfo(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                Main.Log.LogWarning($"[AnimMerger] LogGlobalSlotInventory failed to build report: {ex.Message}");
+            }
+        }
+
+        // ── Ghost skeleton management ─────────────────────────────────────────
 
         private static SkeletonAnimation GetOrCreateGhost(int res)
         {
@@ -174,52 +443,176 @@ namespace PsychicKungfu_MelonMod.Utils
             ghost.name = $"[GhostSkeleton_{res}]";
             UnityEngine.Object.DontDestroyOnLoad(ghost);
 
-            // Renderers OFF — Prefix will enable the one we need during the skill
-            foreach (var r in ghost.GetComponentsInChildren<Renderer>(true))
-                r.enabled = false;
+            foreach (var r in ghost.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+            foreach (var c in ghost.GetComponentsInChildren<Collider2D>(true)) c.enabled = false;
+            foreach (var rb in ghost.GetComponentsInChildren<Rigidbody2D>(true)) rb.isKinematic = true;
 
-            // Remove physics presence
-            foreach (var c in ghost.GetComponentsInChildren<Collider2D>(true))
-                c.enabled = false;
-            foreach (var rb in ghost.GetComponentsInChildren<Rigidbody2D>(true))
-                rb.isKinematic = true;
-
-            // Disable all game-logic MonoBehaviours; keep ONLY SkeletonAnimation.
-            // This neutralises AI, movement controllers, audio, etc.
             foreach (var mb in ghost.GetComponentsInChildren<MonoBehaviour>(true))
-                if (!(mb is SkeletonAnimation))
-                    mb.enabled = false;
+                if (!(mb is SkeletonAnimation)) mb.enabled = false;
 
             var sa = ghost.GetComponentInChildren<SkeletonAnimation>(true);
             if (sa == null)
             {
-                Main.Log.LogWarning(
-                    $"[AnimMerger] Ghost res={res}: no SkeletonAnimation found — destroying");
                 UnityEngine.Object.Destroy(ghost);
                 return null;
             }
 
-            // Keep SkeletonAnimation and its GameObject active so AnimationState is ready
             if (res < 7)
             {
                 sa.skeleton.SetSkin(MonoSingleton<SaveManager>.Instance.SaveData.Skin);
+                EnhanceQiAura(sa, 0f, 0f, 0f, 1.2f);
             }
-            
+                
+
+            // This now includes global counter contexts per slot inline
+            //LogSlotInventory(sa, res);
+
+            // ── Dynamic Dual-Dictionary Shadow Filter (NPC/monster ghosts only) ──
+            if (res >= 7)
+            {
+                sa.UpdateLocal += (animated) =>
+                {
+                    if (animated.Skeleton == null) return;
+
+                    var slotsList = animated.Skeleton.Slots;
+                    bool useExclusiveMode = false;
+
+                    // Pass 1: Pre-scan slots to check if standard mode or opposite mode applies (Garbage-Free)
+                    for (int i = 0; i < slotsList.Count; i++)
+                    {
+                        var slot = slotsList.Items[i];
+                        if (slot?.Data == null || string.IsNullOrEmpty(slot.Data.Name)) continue;
+
+                        string sName = slot.Data.Name;
+
+                        // Check 1A: Exact Name Match
+                        if (ExclusiveBlackoutNames.Contains(sName) || IndependentBlackoutNames.Contains(sName))
+                        {
+                            useExclusiveMode = true;
+                            break;
+                        }
+
+                        // Check 1B: Keyword Substring Match
+                        for (int j = 0; j < ExclusiveBlackoutKeywords.Count; j++)
+                        {
+                            if (sName.IndexOf(ExclusiveBlackoutKeywords[j], StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                useExclusiveMode = true;
+                                break;
+                            }
+                        }
+
+                        if (useExclusiveMode) break;
+                    }
+
+                    // Pass 2: Evaluate and apply blackouts based on active mode context
+                    for (int i = 0; i < slotsList.Count; i++)
+                    {
+                        var slot = slotsList.Items[i];
+                        if (slot?.Data == null || string.IsNullOrEmpty(slot.Data.Name)) continue;
+
+                        string slotName = slot.Data.Name;
+
+                        // Force blackout if found in IndependentBlackoutNames (Works in BOTH standard and opposite modes)
+                        if (IndependentBlackoutNames.Contains(slotName))
+                        {
+                            slot.R = 0f; slot.G = 0f; slot.B = 0f;
+                            if (slot.A > 0.75f) slot.A = 0.75f;
+                            continue;
+                        }
+
+                        if (useExclusiveMode)
+                        {
+                            // ── OPPOSITE MODE ACTIVE ──────────────────────────
+                            bool shouldBlackout = ExclusiveBlackoutNames.Contains(slotName);
+
+                            if (!shouldBlackout)
+                            {
+                                for (int j = 0; j < ExclusiveBlackoutKeywords.Count; j++)
+                                {
+                                    if (slotName.IndexOf(ExclusiveBlackoutKeywords[j], StringComparison.OrdinalIgnoreCase) >= 0)
+                                    {
+                                        shouldBlackout = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (shouldBlackout)
+                            {
+                                slot.R = 0f; slot.G = 0f; slot.B = 0f;
+                                if (slot.A > 0.75f) slot.A = 0.75f;
+                            }
+                        }
+                        else
+                        {
+                            // ── STANDARD FILTERING ACTIVE ─────────────────────
+                            if (slot.Data.BlendMode == BlendMode.Additive) continue;
+                            if (VfxExactNames.Contains(slotName)) continue;
+
+                            bool shouldSkip = false;
+                            for (int j = 0; j < VfxKeywords.Count; j++)
+                            {
+                                if (slotName.IndexOf(VfxKeywords[j], StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    shouldSkip = true;
+                                    break;
+                                }
+                            }
+
+                            if (shouldSkip) continue;
+
+                            slot.R = 0f; slot.G = 0f; slot.B = 0f;
+                            if (slot.A > 0.75f) slot.A = 0.75f;
+                        }
+                    }
+                };
+            }
+
             sa.enabled = true;
             sa.gameObject.SetActive(true);
             ghost.SetActive(true);
 
             _ghosts[res] = sa;
-            Main.Log.LogInfo(
-                $"[AnimMerger] Ghost created: res={res} " +
-                $"bones={sa.Skeleton?.Bones?.Count} slots={sa.Skeleton?.Slots?.Count}");
             return sa;
         }
 
+        // Updated function to query current global registry occurrence stats per slot string
+        public static void LogSlotInventory(SkeletonAnimation sa, int res)
+        {
+            try
+            {
+                var slots = sa.Skeleton.Data.Slots;
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"[AnimMerger] Slot inventory res={res} ({slots.Count} slots):");
+
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    var sd = slots.Items[i];
+                    if (sd == null) continue;
+
+                    string boneName = sd.BoneData?.Name ?? "None";
+                    string slotName = sd.Name ?? "Unknown";
+
+                    // Lookup current occurrence counts safely inside our central dictionary
+                    int globalCount = 0;
+                    if (!string.IsNullOrEmpty(slotName))
+                    {
+                        _globalSlotCounts.TryGetValue(slotName, out globalCount);
+                    }
+
+                    sb.AppendLine($"  [{i:000}] '{slotName}' [Bone: '{boneName}'] blend={sd.BlendMode} (Global Occurrences: {globalCount})");
+                }
+
+                Main.Log.LogInfo(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                Main.Log.LogWarning($"[AnimMerger] LogSlotInventory(res={res}) failed: {ex.Message}");
+            }
+        }
+
         // ── Direct injection (compatible skeletons only) ───────────────────────
-        //
-        // Used as a fast path when source and target bone/slot counts match exactly.
-        // Permanently adds the animation to the player's SkeletonData — no swap needed.
 
         public static bool EnsureAnimation(SkeletonData target, string animName)
         {
@@ -228,54 +621,26 @@ namespace PsychicKungfu_MelonMod.Utils
                 if (target == null || string.IsNullOrEmpty(animName)) return false;
                 if (target.FindAnimation(animName) != null) return true;
 
-                if (!_pool.TryGetValue(animName, out var entry))
-                    return false;
+                if (!_pool.TryGetValue(animName, out var entry)) return false;
 
-                // Spine timelines address bones/slots by index — mismatched counts
-                // corrupt the skeleton permanently. Only inject on exact match.
                 int tBones = target.Bones.Count;
                 int tSlots = target.Slots.Count;
-                if (entry.SourceBones != tBones || entry.SourceSlots != tSlots)
-                    return false; // caller will fall through to model-swap path
+                if (entry.SourceBones != tBones || entry.SourceSlots != tSlots) return false;
 
-                // Dedup: don't re-inject if already attempted for this skeleton
                 if (!_injected.TryGetValue(target, out var injSet))
                     _injected[target] = injSet = new HashSet<string>();
 
                 if (!injSet.Add(animName))
                     return target.FindAnimation(animName) != null;
 
-                // Inject
-                Main.Log.LogInfo(
-                    $"[AnimMerger] Injecting '{animName}' | " +
-                    $"source_res={entry.SourceRes} " +
-                    $"duration={entry.Animation.Duration:F3}s " +
-                    $"timelines={entry.Animation.Timelines.Count} | " +
-                    $"target bones={tBones} slots={tSlots}");
-
                 object listObj = _animationsField.GetValue(target);
-                if (listObj == null)
-                {
-                    Main.Log.LogError("[AnimMerger] animations list is null on target skeleton.");
-                    return false;
-                }
+                if (listObj == null) return false;
 
-                var addMethod = listObj.GetType()
-                    .GetMethod("Add", new[] { typeof(Spine.Animation) });
-                if (addMethod == null)
-                {
-                    Main.Log.LogError(
-                        $"[AnimMerger] Add(Animation) not found on {listObj.GetType().FullName}.");
-                    return false;
-                }
+                var addMethod = listObj.GetType().GetMethod("Add", new[] { typeof(Spine.Animation) });
+                if (addMethod == null) return false;
 
                 addMethod.Invoke(listObj, new object[] { entry.Animation });
-
-                bool success = target.FindAnimation(animName) != null;
-                Main.Log.LogInfo(success
-                    ? $"[AnimMerger] ✓ Injected '{animName}'"
-                    : $"[AnimMerger] ✗ Add() called but FindAnimation still null for '{animName}'");
-                return success;
+                return target.FindAnimation(animName) != null;
             }
             catch (Exception ex)
             {
@@ -286,19 +651,13 @@ namespace PsychicKungfu_MelonMod.Utils
 
         // ── Helpers ───────────────────────────────────────────────────────────
 
-        private static IEnumerable<Spine.Animation> EnumerateAnimations(
-            SkeletonData data, out int enumPath)
+        private static IEnumerable<Spine.Animation> EnumerateAnimations(SkeletonData data, out int enumPath)
         {
             enumPath = 0;
-            if (data == null || _animationsField == null)
-                return System.Linq.Enumerable.Empty<Spine.Animation>();
+            if (data == null || _animationsField == null) return System.Linq.Enumerable.Empty<Spine.Animation>();
 
             object listObj = _animationsField.GetValue(data);
-            if (listObj == null)
-            {
-                Main.Log.LogWarning("[AnimMerger] animations field is null on skeleton.");
-                return System.Linq.Enumerable.Empty<Spine.Animation>();
-            }
+            if (listObj == null) return System.Linq.Enumerable.Empty<Spine.Animation>();
 
             if (listObj is System.Collections.IEnumerable enumerable)
             {
@@ -316,21 +675,16 @@ namespace PsychicKungfu_MelonMod.Utils
                 return EnumerateViaFields(listObj, items, countF);
             }
 
-            Main.Log.LogError(
-                $"[AnimMerger] Cannot enumerate animations. " +
-                $"Type={listType.FullName} IEnumerable=false Items={items != null} Count={countF != null}");
             return System.Linq.Enumerable.Empty<Spine.Animation>();
         }
 
-        private static IEnumerable<Spine.Animation> EnumerateViaInterface(
-            System.Collections.IEnumerable source)
+        private static IEnumerable<Spine.Animation> EnumerateViaInterface(System.Collections.IEnumerable source)
         {
             foreach (object obj in source)
                 if (obj is Spine.Animation a) yield return a;
         }
 
-        private static IEnumerable<Spine.Animation> EnumerateViaFields(
-            object listObj, FieldInfo itemsField, FieldInfo countField)
+        private static IEnumerable<Spine.Animation> EnumerateViaFields(object listObj, FieldInfo itemsField, FieldInfo countField)
         {
             var arr = itemsField.GetValue(listObj) as System.Collections.IList;
             int count = (int)countField.GetValue(listObj);
@@ -340,40 +694,9 @@ namespace PsychicKungfu_MelonMod.Utils
         }
 
         // ── Harmony patch ─────────────────────────────────────────────────────
-        //
-        // When Play(name, loop, needDebug, isSkill=true) is called for a skill
-        // animation that is missing from the player's skeleton, we intercept in
-        // two stages:
-        //
-        // PRIORITY ORDER
-        //   1. Animation already in player skeleton
-        //      → Prefix does nothing, original Play() runs normally.
-        //
-        //   2. Skeleton-compatible source exists
-        //      → EnsureAnimation() injects it permanently, original Play() finds it.
-        //
-        //   3. Incompatible source (different bone/slot count — the common case)
-        //      → MODEL SWAP:
-        //        Prefix  — position ghost at player location, match facing scale,
-        //                   enable ghost renderer, disable player renderer,
-        //                   replace RoleController.m_animation with ghost SA.
-        //                   Return true → original Play() runs on ghost SA.
-        //                   The game registers all its event listeners (particles,
-        //                   hit callbacks) on the ghost's AnimationState, which is
-        //                   at the player's world position → effects appear correctly.
-        //        Postfix  — hook TrackEntry.End (fires on both normal finish AND
-        //                   interruption) to restore m_animation and renderers.
-        //                   Guard against double-restore by checking that m_animation
-        //                   is still the ghost when End fires.
-        //
-        // WHY End AND NOT Complete?
-        //   Complete fires only at the end of a full animation loop/play-through.
-        //   End fires whenever the track is cleared, including skill interruption
-        //   (taking a hit, death, dodge). Using End ensures the player model is
-        //   always restored regardless of how the skill terminates.
 
         private static readonly Dictionary<RoleController, SwapContext> _activeSwaps =
-                new Dictionary<RoleController, SwapContext>();
+            new Dictionary<RoleController, SwapContext>();
 
         private class SwapContext
         {
@@ -381,28 +704,14 @@ namespace PsychicKungfu_MelonMod.Utils
             public SkeletonAnimation GhostSA;
             public Renderer PlayerRenderer;
             public Renderer GhostRenderer;
-
-            // Stored BEFORE parenting — after SetParent the ghost's .root changes,
-            // but the Transform reference itself remains valid for the restore call.
             public Transform GhostRoot;
-
-            // Player's real m_roleId so AudioManager looks up the right audio bank.
             public int OriginalRoleId;
         }
-
-        // ── Harmony patch ─────────────────────────────────────────────────────────
 
         [HarmonyPatch(typeof(RoleController), "Play")]
         public static class RoleControllerPlayPatch
         {
-            // ── Prefix ────────────────────────────────────────────────────────────
-            // No __state parameter — state is kept in _activeSwaps instead.
-
-            static void Prefix(
-                RoleController __instance,
-                string name,
-                bool loop,
-                bool isSkill)
+            static void Prefix(RoleController __instance, string name, bool loop, bool isSkill)
             {
                 try
                 {
@@ -414,72 +723,37 @@ namespace PsychicKungfu_MelonMod.Utils
                     if (data == null) return;
 
                     if (data.FindAnimation(name) != null) return;
-
                     if (!_pool.TryGetValue(name, out var entry)) return;
-
-                    if (EnsureAnimation(data, name))
-                    {
-                        Main.Log.LogInfo($"[AnimMerger] '{name}' injected — no swap needed");
-                        return;
-                    }
+                    if (EnsureAnimation(data, name)) return;
 
                     var ghostSA = GetOrCreateGhost(entry.SourceRes);
-                    if (ghostSA == null)
-                    {
-                        Main.Log.LogWarning(
-                            $"[AnimMerger] Swap aborted: ghost unavailable for res={entry.SourceRes}");
-                        return;
-                    }
+                    if (ghostSA == null) return;
 
-                    // ── Sound fix: set m_roleId to source character's res ─────────────────
-                    // RoleController.Play registers an event handler that calls:
-                    //   AudioManager.PlayRoleEffect(e.Data.AudioPath, this.m_roleId)
-                    // The roleId is used to look up the character's audio bank. Playing the
-                    // source character's animation with the player's roleId finds no audio.
-                    // We temporarily swap roleId to the source res and restore it after.
                     int originalRoleId = (int)(_roleIdField?.GetValue(__instance) ?? 0);
                     _roleIdField?.SetValue(__instance, entry.SourceRes);
-                    Main.Log.LogInfo(
-                        $"[AnimMerger] Swap: m_roleId {originalRoleId} → {entry.SourceRes} (audio bank fix)");
 
-                    // ── Movement fix: parent ghost to player root ─────────────────────────
-                    // The player's position is driven by m_transform (the RoleController's
-                    // own GameObject transform). DOTween dash/translate moves this transform,
-                    // and all children move with it. Parenting the ghost here makes it follow
-                    // every frame automatically — no per-frame update needed.
-                    // Store the root reference NOW, before SetParent changes .root to the
-                    // player's root.
                     Transform ghostRoot = ghostSA.transform.root;
                     ghostRoot.SetParent(__instance.transform);
                     ghostRoot.localPosition = Vector3.zero;
                     ghostRoot.localRotation = Quaternion.identity;
                     ghostRoot.localScale = Vector3.one;
 
-                    // Mirror the player SA's facing rotation (set by RoleController.Rotate
-                    // via DOLocalRotateQuaternion on the SA's own transform).
-                    ghostSA.transform.localRotation = originalSA.transform.localRotation;
+                    var syncer = ghostSA.GetComponent<OrientationSyncer>()
+                               ?? ghostSA.gameObject.AddComponent<OrientationSyncer>();
+                    syncer.Source = originalSA;
+                    syncer.Target = ghostSA;
+                    syncer.enabled = true;
 
-                    Main.Log.LogInfo(
-                        $"[AnimMerger] Swap: '{name}' | " +
-                        $"player bones={data.Bones.Count} slots={data.Slots.Count} → " +
-                        $"ghost res={entry.SourceRes} bones={entry.SourceBones} slots={entry.SourceSlots} | " +
-                        $"worldPos={originalSA.transform.position} facing={ghostSA.transform.localRotation.eulerAngles}");
+                    // Force a sync run immediately right here during frame creation 
+                    // so the ghost registers the correct flipped state before render pass
+                    syncer.Sync();
 
                     var playerRenderer = originalSA.GetComponent<Renderer>();
                     var ghostRenderer = ghostSA.GetComponent<Renderer>();
-
                     if (playerRenderer != null) playerRenderer.enabled = false;
-                    else Main.Log.LogWarning("[AnimMerger] Swap: player Renderer not found on SA GameObject");
-
                     if (ghostRenderer != null) ghostRenderer.enabled = true;
-                    else Main.Log.LogWarning("[AnimMerger] Swap: ghost Renderer not found on SA GameObject");
-
-                    Main.Log.LogInfo(
-                        $"[AnimMerger] Swap: player renderer hidden={playerRenderer != null}, " +
-                        $"ghost renderer shown={ghostRenderer != null}");
 
                     _animField.SetValue(__instance, ghostSA);
-                    Main.Log.LogInfo("[AnimMerger] Swap: m_animation replaced with ghost SA");
 
                     _activeSwaps[__instance] = new SwapContext
                     {
@@ -487,7 +761,7 @@ namespace PsychicKungfu_MelonMod.Utils
                         GhostSA = ghostSA,
                         PlayerRenderer = playerRenderer,
                         GhostRenderer = ghostRenderer,
-                        GhostRoot = ghostRoot,      // reference captured before re-parent
+                        GhostRoot = ghostRoot,
                         OriginalRoleId = originalRoleId
                     };
                 }
@@ -497,54 +771,26 @@ namespace PsychicKungfu_MelonMod.Utils
                 }
             }
 
-            // ── Postfix ───────────────────────────────────────────────────────────
-
-            static void Postfix(
-                RoleController __instance,
-                string name,
-                bool isSkill,
-                TrackEntry __result)
+            static void Postfix(RoleController __instance, string name, bool isSkill, TrackEntry __result)
             {
-                // Always log so we can confirm Postfix is actually being called
-                Main.Log.LogInfo(
-                    $"[AnimMerger] Postfix: name='{name}' isSkill={isSkill} " +
-                    $"result={(__result != null ? $"OK duration={__result.Animation?.Duration:F3}s" : "NULL")} " +
-                    $"hasSwap={_activeSwaps.ContainsKey(__instance)}");
-
                 if (!_activeSwaps.TryGetValue(__instance, out var ctx)) return;
                 _activeSwaps.Remove(__instance);
 
                 if (__result == null)
                 {
-                    // Play() returned null even on the ghost — animation was not found on
-                    // its live SkeletonData. Restore immediately so player isn't stuck invisible.
-                    Main.Log.LogWarning(
-                        $"[AnimMerger] Swap: Play() returned null for '{name}' on ghost — " +
-                        $"ghost SkeletonData may differ from prefab scan. Restoring immediately.");
                     RestoreSwap(__instance, name, ctx);
                     return;
                 }
 
-                Main.Log.LogInfo(
-                    $"[AnimMerger] Swap: registering End callback for '{name}' " +
-                    $"duration={__result.Animation?.Duration:F3}s");
+                ctx.GhostSA.GetComponent<OrientationSyncer>()?.Sync();
 
                 var rc = __instance;
                 __result.End += (entry) =>
                 {
                     try
                     {
-                        // Guard: only restore if m_animation is still the ghost.
-                        // Prevents double-restore if End fires more than once.
                         var current = _animField?.GetValue(rc) as SkeletonAnimation;
-                        if (current != ctx.GhostSA)
-                        {
-                            Main.Log.LogInfo(
-                                $"[AnimMerger] End callback for '{name}': " +
-                                $"m_animation already changed — skipping restore");
-                            return;
-                        }
-
+                        if (current != ctx.GhostSA) return;
                         RestoreSwap(rc, name, ctx);
                     }
                     catch (Exception ex)
@@ -554,40 +800,25 @@ namespace PsychicKungfu_MelonMod.Utils
                 };
             }
 
-            // ── Shared restore ────────────────────────────────────────────────────
-
-            // ── Replace RestoreSwap entirely ──────────────────────────────────────────
-
             private static void RestoreSwap(RoleController rc, string animName, SwapContext ctx)
             {
-                // Restore m_animation to the player's real skeleton
+                var syncer = ctx.GhostSA.GetComponent<OrientationSyncer>();
+                if (syncer != null) syncer.enabled = false;
+
                 _animField.SetValue(rc, ctx.OriginalSA);
-                Main.Log.LogInfo(
-                    $"[AnimMerger] Swap restored: '{animName}' ended — " +
-                    $"m_animation back to player skeleton");
-
-                // Restore m_roleId so the player's own audio bank is used again
                 _roleIdField?.SetValue(rc, ctx.OriginalRoleId);
-                Main.Log.LogInfo($"[AnimMerger] Restore: m_roleId → {ctx.OriginalRoleId}");
 
-                // Detach ghost from the player's transform hierarchy.
-                // SetParent(null) makes it a scene root again; we must re-apply
-                // DontDestroyOnLoad because parenting to a scene object removed it.
                 if (ctx.GhostRoot != null)
                 {
                     ctx.GhostRoot.SetParent(null);
                     UnityEngine.Object.DontDestroyOnLoad(ctx.GhostRoot.gameObject);
-                    Main.Log.LogInfo("[AnimMerger] Restore: ghost unparented, DontDestroyOnLoad re-applied");
                 }
 
-                // Hide ghost, show player
                 if (ctx.GhostRenderer != null) ctx.GhostRenderer.enabled = false;
                 if (ctx.PlayerRenderer != null) ctx.PlayerRenderer.enabled = true;
-
-                Main.Log.LogInfo(
-                    $"[AnimMerger] Restore: ghost hidden={ctx.GhostRenderer != null}, " +
-                    $"player shown={ctx.PlayerRenderer != null}");
             }
         }
     }
+
+
 }
