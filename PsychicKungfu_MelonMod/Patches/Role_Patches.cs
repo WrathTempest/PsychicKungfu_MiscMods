@@ -35,8 +35,9 @@ namespace PsychicKungfu_MelonMod.Patches
                 return qualityB.CompareTo(qualityA);
             });
             Helpers.SetPrivateField<string>(__instance.m_data, "m_chengHao", "Realm of the Gods");
+            Helpers.SetPrivateField<int[]>(__instance.m_data, "m_passives", new int[] {10300});
             SkeletonAnimation animation = Helpers.GetPrivateField<SkeletonAnimation>(__instance.m_controller, "m_animation");
-            AnimationMerger.LogSlotInventory(animation, __instance.m_data.m_res);
+            AnimationMerger.LogSkinAttachments(animation);
             AnimationMerger.EnhanceQiAura(animation, 0, 0, 0, 1.2f);
             SkillReplacer.AppendConfigSkills(__instance);
 
@@ -48,12 +49,12 @@ namespace PsychicKungfu_MelonMod.Patches
         [HarmonyPostfix]
         public static void DifficultyMultiplier(Role __instance, bool ai)
         {
-            
+            if (!ModConfig.DifficultyPatch.Value) return;
             if (Helpers.IsPlayer(__instance)) return;
             SaveData saveData = MonoSingleton<SaveManager>.Instance.SaveData;
             
             DifficultData difficultData = Difficult.Get((int)saveData.m_diffucultEnum);
-            int damagemult = ((difficultData.m_atk - 100) / 2) + 100;
+            int damagemult = ((difficultData.m_atk - 100) / 1) + 100;
             if (ai)
             {
                 Helpers.SetPrivateField<int>(__instance, "m_damage", Mathf.RoundToInt((float)__instance.m_data.m_damage *(float)(damagemult) / 100f));
@@ -123,6 +124,12 @@ namespace PsychicKungfu_MelonMod.Patches
                 __result = __instance.m_controller.Play(string.Format("{0}", id), false, needDebug, true);
                 return false;
             }
+            else if (skill.m_id == 69421)
+            {
+                int id = 50015;
+                __result = __instance.m_controller.Play(string.Format("{0}", id), false, needDebug, true);
+                return false;
+            }
             return true;
         }
 
@@ -130,7 +137,8 @@ namespace PsychicKungfu_MelonMod.Patches
         [HarmonyPostfix]
         public static void AddItems(SaveData saveData)
         {
-            if (!saveData.GotItem(60101))
+            if (!ModConfig.SpawnManuals.Value) return;
+            if (!saveData.GotItem(50022))
             {
                 Helpers.AddAllSkillManuals();
             }

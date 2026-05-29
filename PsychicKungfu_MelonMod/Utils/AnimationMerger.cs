@@ -35,10 +35,9 @@ namespace PsychicKungfu_MelonMod.Utils
         // ── 4. Opposite Mode: Partial Substring Matches (Case-Insensitive) ───
         // TRIGGER: If a skeleton contains ANY slot name containing these keywords, it also triggers
         // Opposite Mode. Only slots matching these keywords or the exact list above will be blacked out.
-        // NOTE: This list will be dynamically appended with slots that have a global occurrence count of 1.
         public static readonly List<string> ExclusiveBlackoutKeywords = new List<string>
         {
-             "yueque",
+             "yueque", "xiaohonglian", "kuhaijiaojiaozhu"
         };
 
         // ── 5. Independent Blackout Mode: Full-String Exact Matches Only (Case-Insensitive) ───
@@ -47,6 +46,14 @@ namespace PsychicKungfu_MelonMod.Utils
         public static readonly HashSet<string> IndependentBlackoutNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "t", "yan", "st"
+        };
+
+        // ── 6. Inverted Models Registry ───────────────────────────────────────
+        // Add resource IDs (m_res) here if the model's artwork is inherently drawn 
+        // facing the opposite direction compared to standard character rigs.
+        public static readonly HashSet<int> InvertedResourceIds = new HashSet<int>
+        {
+            10880
         };
 
         // ── Data structures ───────────────────────────────────────────────────
@@ -95,6 +102,7 @@ namespace PsychicKungfu_MelonMod.Utils
         {
             public SkeletonAnimation Source;
             public SkeletonAnimation Target;
+            public bool InvertX = false; // Flag to handle models with reversed source animations
 
             public void Sync()
             {
@@ -106,7 +114,8 @@ namespace PsychicKungfu_MelonMod.Utils
 
                 if (Target.Skeleton != null && Source.Skeleton != null)
                 {
-                    Target.Skeleton.ScaleX = Source.Skeleton.ScaleX;
+                    // If InvertX is true, flip the internal ScaleX calculation to compensate for backward assets
+                    Target.Skeleton.ScaleX = InvertX ? -Source.Skeleton.ScaleX : Source.Skeleton.ScaleX;
                     Target.Skeleton.ScaleY = Source.Skeleton.ScaleY;
 
                     // Force internal matrix recalculation so orientation changes instantly
@@ -119,6 +128,19 @@ namespace PsychicKungfu_MelonMod.Utils
         }
 
         // ── Initialization & Slot Collection ──────────────────────────────────
+
+        public static void LogSkinAttachments(SkeletonAnimation animation)
+        {
+            var currentSkin = animation.Skeleton.Skin ?? animation.Skeleton.Data.DefaultSkin;
+            foreach (var entry in currentSkin.Attachments)
+            {
+                int slotIndex = entry.SlotIndex;
+                string attachmentName = entry.Name;
+                var attachment = entry.Attachment;
+
+                PsychicKungfu_MelonMod.Main.Log.LogInfo($"Slot Index: {slotIndex} | Attachment Name: {attachmentName} | Type: {attachment?.GetType().Name}");
+            }
+        }
 
         public static void EnhanceQiAura(SkeletonAnimation mainAnim, float targetR, float targetG, float targetB, float boneScale = 1.4f)
         {
@@ -183,14 +205,14 @@ namespace PsychicKungfu_MelonMod.Utils
             }
             if (_animationsField == null)
             {
-                Main.Log.LogError(
+                PsychicKungfu_MelonMod.Main.Log.LogError(
                     "[AnimMerger] SkeletonData.animations field not found. Aborting.");
                 return;
             }
 
             if (Character.Dic == null || Character.Dic.Count == 0)
             {
-                Main.Log.LogError(
+                PsychicKungfu_MelonMod.Main.Log.LogError(
                     "[AnimMerger] Character.Dic is null/empty — called too early? Aborting.");
                 return;
             }
@@ -200,7 +222,7 @@ namespace PsychicKungfu_MelonMod.Utils
             foreach (var kv in Character.Dic)
                 if (kv.Value != null && seen.Add(kv.Value.m_res)) total++;
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[AnimMerger] Starting prefab scan — " +
                 $"{Character.Dic.Count} entries, {total} unique res IDs.");
 
@@ -272,11 +294,11 @@ namespace PsychicKungfu_MelonMod.Utils
                 catch (Exception ex)
                 {
                     failed++;
-                    Main.Log.LogError($"[AnimMerger] Scan exception: {ex}");
+                    PsychicKungfu_MelonMod.Main.Log.LogError($"[AnimMerger] Scan exception: {ex}");
                 }
             }
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[AnimMerger] Scan complete — scanned={scanned} skipped={skipped} failed={failed} pool={_pool.Count}");
 
             // 1. Log the full collection overview 
@@ -306,11 +328,11 @@ namespace PsychicKungfu_MelonMod.Utils
                         }
                     }
                 }
-                Main.Log.LogInfo($"[AnimMerger] Automatically processed and assigned {addedCount} unique slot names (global count = 1) into ExclusiveBlackoutKeywords.");
+                PsychicKungfu_MelonMod.Main.Log.LogInfo($"[AnimMerger] Automatically processed and assigned {addedCount} unique slot names (global count = 1) into ExclusiveBlackoutKeywords.");
             }
             catch (Exception ex)
             {
-                Main.Log.LogWarning($"[AnimMerger] AutoPopulateExclusiveKeywords failed: {ex.Message}");
+                PsychicKungfu_MelonMod.Main.Log.LogWarning($"[AnimMerger] AutoPopulateExclusiveKeywords failed: {ex.Message}");
             }
         }
 
@@ -386,12 +408,12 @@ namespace PsychicKungfu_MelonMod.Utils
 
                 if (totalAdded > 0)
                 {
-                    Main.Log.LogInfo($"[AnimMerger] Cross-reference check complete. Dynamically appended {totalAdded} non-blackout slots into VfxExactNames from skeletons operating on Opposite Mode.");
+                    PsychicKungfu_MelonMod.Main.Log.LogInfo($"[AnimMerger] Cross-reference check complete. Dynamically appended {totalAdded} non-blackout slots into VfxExactNames from skeletons operating on Opposite Mode.");
                 }
             }
             catch (Exception ex)
             {
-                Main.Log.LogWarning($"[AnimMerger] ProcessBlackoutResForVfxWhitelisting failed: {ex.Message}");
+                PsychicKungfu_MelonMod.Main.Log.LogWarning($"[AnimMerger] ProcessBlackoutResForVfxWhitelisting failed: {ex.Message}");
             }
         }
 
@@ -416,11 +438,11 @@ namespace PsychicKungfu_MelonMod.Utils
                 }
                 sb.AppendLine($"========================================================================");
 
-                Main.Log.LogInfo(sb.ToString());
+                PsychicKungfu_MelonMod.Main.Log.LogInfo(sb.ToString());
             }
             catch (Exception ex)
             {
-                Main.Log.LogWarning($"[AnimMerger] LogGlobalSlotInventory failed to build report: {ex.Message}");
+                PsychicKungfu_MelonMod.Main.Log.LogWarning($"[AnimMerger] LogGlobalSlotInventory failed to build report: {ex.Message}");
             }
         }
 
@@ -435,7 +457,7 @@ namespace PsychicKungfu_MelonMod.Utils
             var obj = Singleton<ResManager>.Instance.Load<UnityEngine.Object>(path);
             if (!(obj is GameObject prefab))
             {
-                Main.Log.LogWarning($"[AnimMerger] Ghost: prefab not found for res={res}");
+                PsychicKungfu_MelonMod.Main.Log.LogWarning($"[AnimMerger] Ghost: prefab not found for res={res}");
                 return null;
             }
 
@@ -462,10 +484,11 @@ namespace PsychicKungfu_MelonMod.Utils
                 sa.skeleton.SetSkin(MonoSingleton<SaveManager>.Instance.SaveData.Skin);
                 EnhanceQiAura(sa, 0f, 0f, 0f, 1.2f);
             }
-                
+
 
             // This now includes global counter contexts per slot inline
-            //LogSlotInventory(sa, res);
+            LogSlotInventory(sa, res);
+            LogSkinAttachments(sa);
 
             // ── Dynamic Dual-Dictionary Shadow Filter (NPC/monster ghosts only) ──
             if (res >= 7)
@@ -493,9 +516,9 @@ namespace PsychicKungfu_MelonMod.Utils
                         }
 
                         // Check 1B: Keyword Substring Match
-                        for (int j = 0; j < ExclusiveBlackoutKeywords.Count; j++)
+                        for (int iKeyword = 0; iKeyword < ExclusiveBlackoutKeywords.Count; iKeyword++)
                         {
-                            if (sName.IndexOf(ExclusiveBlackoutKeywords[j], StringComparison.OrdinalIgnoreCase) >= 0)
+                            if (sName.IndexOf(ExclusiveBlackoutKeywords[iKeyword], StringComparison.OrdinalIgnoreCase) >= 0)
                             {
                                 useExclusiveMode = true;
                                 break;
@@ -604,11 +627,11 @@ namespace PsychicKungfu_MelonMod.Utils
                     sb.AppendLine($"  [{i:000}] '{slotName}' [Bone: '{boneName}'] blend={sd.BlendMode} (Global Occurrences: {globalCount})");
                 }
 
-                Main.Log.LogInfo(sb.ToString());
+                PsychicKungfu_MelonMod.Main.Log.LogInfo(sb.ToString());
             }
             catch (Exception ex)
             {
-                Main.Log.LogWarning($"[AnimMerger] LogSlotInventory(res={res}) failed: {ex.Message}");
+                PsychicKungfu_MelonMod.Main.Log.LogWarning($"[AnimMerger] LogSlotInventory(res={res}) failed: {ex.Message}");
             }
         }
 
@@ -644,7 +667,7 @@ namespace PsychicKungfu_MelonMod.Utils
             }
             catch (Exception ex)
             {
-                Main.Log.LogError($"[AnimMerger] EnsureAnimation('{animName}') threw:\n{ex}");
+                PsychicKungfu_MelonMod.Main.Log.LogError($"[AnimMerger] EnsureAnimation('{animName}') threw:\n{ex}");
                 return false;
             }
         }
@@ -742,6 +765,9 @@ namespace PsychicKungfu_MelonMod.Utils
                                ?? ghostSA.gameObject.AddComponent<OrientationSyncer>();
                     syncer.Source = originalSA;
                     syncer.Target = ghostSA;
+
+                    // Assign whether this specific resource ID needs inverted scale handling
+                    syncer.InvertX = InvertedResourceIds.Contains(entry.SourceRes);
                     syncer.enabled = true;
 
                     // Force a sync run immediately right here during frame creation 
@@ -767,7 +793,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 }
                 catch (Exception ex)
                 {
-                    Main.Log.LogError($"[AnimMerger] Swap Prefix threw:\n{ex}");
+                    PsychicKungfu_MelonMod.Main.Log.LogError($"[AnimMerger] Swap Prefix threw:\n{ex}");
                 }
             }
 
@@ -795,7 +821,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     }
                     catch (Exception ex)
                     {
-                        Main.Log.LogError($"[AnimMerger] End callback for '{name}' threw:\n{ex}");
+                        PsychicKungfu_MelonMod.Main.Log.LogError($"[AnimMerger] End callback for '{name}' threw:\n{ex}");
                     }
                 };
             }
@@ -819,6 +845,4 @@ namespace PsychicKungfu_MelonMod.Utils
             }
         }
     }
-
-
 }

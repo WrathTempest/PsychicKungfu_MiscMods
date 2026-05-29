@@ -14,10 +14,8 @@ namespace PsychicKungfu_MelonMod
     public static class SkillReplacer
     {
         // ─────────────────────────────────────────────────────────────
-        // CONFIG & STATE
+        // STATE
         // ─────────────────────────────────────────────────────────────
-        public static ConfigEntry<string> ReplaceSkillsConfig;
-
         public static int _currentPage = 0;
         public static bool _keyPressed = false;
 
@@ -33,21 +31,17 @@ namespace PsychicKungfu_MelonMod
         // ─────────────────────────────────────────────────────────────
         public static void Initialize(ConfigFile config)
         {
-            ReplaceSkillsConfig = config.Bind(
-                "Skill Replacer",
-                "Replacement Skills",
-                "500180",
-                "Comma separated replacement skill IDs.\nExample: 500180,500181,500182");
+            // Subscribe to the centralized global hot-swap listener inside ModConfig
+            ModConfig.OnConfigHotSwapped += OnConfigHotReload;
 
-            ReplaceSkillsConfig.SettingChanged += OnConfigHotReload;
-            Debug.Log("[SkillReplacer] Initialized.");
+            Debug.Log("[SkillReplacer] Initialized and hooked to centralized ModConfig event tracker.");
         }
 
-        private static void OnConfigHotReload(object sender, EventArgs e)
+        private static void OnConfigHotReload()
         {
             _masterSkills.Clear();
             _currentPage = 0;
-            Debug.Log($"[SkillReplacer] Config hot-swapped! Cleared master skill cache.");
+            Debug.Log($"[SkillReplacer] Config hot-swapped via ModConfig! Cleared master skill cache.");
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -160,7 +154,8 @@ namespace PsychicKungfu_MelonMod
             List<int> ids = new List<int>();
             try
             {
-                string raw = ReplaceSkillsConfig.Value;
+                // Pull string data dynamically from the centralized ModConfig container instead
+                string raw = ModConfig.ReplaceSkillsConfig.Value;
                 if (string.IsNullOrWhiteSpace(raw)) return ids;
 
                 string[] split = raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);

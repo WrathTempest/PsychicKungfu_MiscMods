@@ -11,6 +11,7 @@ namespace PsychicKungfu_MelonMod.Patches
         public static void GetWuxue(ref WuXueData __result)
         {
             //if ((WuXueType)__result.m_type == WuXueType.All || __result.m_type > 6) return;
+            if (!ModConfig.LiftWeaponSkillRestriction.Value) return;
             WuXueData data = null;
             if ((WuXueType)__result.m_type != WuXueType.All && __result.m_type <= 6)
             {

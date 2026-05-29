@@ -14,7 +14,7 @@ namespace PsychicKungfu_MelonMod.Patches
         [HarmonyPostfix]
         public static void DaZaoBypassItem(DaZaoWindow __instance)
         {
-            if (!Helpers.PlayerHasGlobalBuff(6942)) return;
+            if (!ModConfig.SpawnCraftingMats.Value) return;
             //Helpers.SetPrivateField<bool>(__instance, "m_itemEnough", true);
             DaZaoData m_selectDaZao = Helpers.GetPrivateField<DaZaoData>(__instance, "m_selectDaZao");
             if (m_selectDaZao == null) 
@@ -112,8 +112,7 @@ namespace PsychicKungfu_MelonMod.Patches
                         return;
                     }
 
-                    if (!Helpers.PlayerHasGlobalBuff(6942))
-                        return;
+                    if (!ModConfig.SpawnCraftingMats.Value) return;
 
                     SaveData saveData =
                         MonoSingleton<SaveManager>.Instance.SaveData;

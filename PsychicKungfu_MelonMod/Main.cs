@@ -27,11 +27,15 @@ namespace PsychicKungfu_MelonMod
         private void Awake()
         {
             Log = Logger;
-            DBLoadManager.DumpAll(DumpLanguage.English);
+            ModConfig.Initialize(Config);
+            SkillReplacer.Initialize(Config);
+            if (ModConfig.DumpLanguage.Value != -1)
+            {
+                DBLoadManager.DumpAll((DumpLanguage)ModConfig.DumpLanguage.Value);
+            }           
             DBLoadManager.LoadOverrides();
             Harmony.PatchAll();
-            AnimationMerger.Initialize();
-            SkillReplacer.Initialize(Config);
+            AnimationMerger.Initialize();         
             Logger.LogInfo($"PluginName: {PluginName}, VersionString: {VersionString} is loaded.");         
 
         }

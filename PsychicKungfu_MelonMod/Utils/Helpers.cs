@@ -104,7 +104,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (field == null)
             {
-                Main.Log.LogInfo(
+                PsychicKungfu_MelonMod.Main.Log.LogInfo(
                     $"[Helpers] Failed GetPrivateField<{typeof(T).Name}> " +
                     $"Field='{fieldName}' Type='{instance.GetType().FullName}'");
 
@@ -149,7 +149,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (field == null)
             {
-                Main.Log.LogInfo(
+                PsychicKungfu_MelonMod.Main.Log.LogInfo(
                     $"[Helpers] Failed SetPrivateField<{typeof(T).Name}> " +
                     $"Field='{fieldName}' Type='{instance.GetType().FullName}'");
 
@@ -204,7 +204,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 type = type.BaseType;
             }
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[Helpers] Failed GetPrivateProperty<{typeof(T).Name}> " +
                 $"Property='{propertyName}' " +
                 $"Type='{instance.GetType().FullName}'");
@@ -257,7 +257,7 @@ namespace PsychicKungfu_MelonMod.Utils
                 type = type.BaseType;
             }
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[Helpers] Failed SetPrivateProperty<{typeof(T).Name}> " +
                 $"Property='{propertyName}' " +
                 $"Type='{instance.GetType().FullName}'");
@@ -296,7 +296,7 @@ namespace PsychicKungfu_MelonMod.Utils
         {
             string caller = GetRealCaller(skipFrames + 1);
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[Helpers] {message} Called by: {caller}");
         }
 
@@ -318,7 +318,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (method == null)
             {
-                Main.Log.LogInfo(
+                PsychicKungfu_MelonMod.Main.Log.LogInfo(
                     $"[Helpers] Failed Call Method='{methodName}' " +
                     $"Type='{type.FullName}'");
 
@@ -327,7 +327,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     methodName);
             }
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[Helpers] Call Method='{methodName}' " +
                 $"Type='{type.FullName}'");
 
@@ -350,7 +350,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (method == null)
             {
-                Main.Log.LogInfo(
+                PsychicKungfu_MelonMod.Main.Log.LogInfo(
                     $"[Helpers] Failed Call Method='{methodName}' " +
                     $"Type='{type.FullName}'");
 
@@ -359,7 +359,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     methodName);
             }
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[Helpers] Call Method='{methodName}' " +
                 $"Type='{type.FullName}'");
 
@@ -377,7 +377,7 @@ namespace PsychicKungfu_MelonMod.Utils
 
             if (method == null)
             {
-                Main.Log.LogInfo(
+                PsychicKungfu_MelonMod.Main.Log.LogInfo(
                     $"[Helpers] Failed CallStatic Method='{methodName}' " +
                     $"Type='{type.FullName}'");
 
@@ -386,7 +386,7 @@ namespace PsychicKungfu_MelonMod.Utils
                     methodName);
             }
 
-            Main.Log.LogInfo(
+            PsychicKungfu_MelonMod.Main.Log.LogInfo(
                 $"[Helpers] CallStatic Method='{methodName}' " +
                 $"Type='{type.FullName}'");
 

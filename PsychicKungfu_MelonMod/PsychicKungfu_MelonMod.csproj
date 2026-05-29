@@ -39,15 +39,19 @@
     </Reference>
     <Reference Include="AsmResolver, Version=5.5.1.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\BepInEx.AssemblyPublicizer.MSBuild.0.4.3\lib\net472\AsmResolver.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="AsmResolver.DotNet, Version=5.5.1.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\BepInEx.AssemblyPublicizer.MSBuild.0.4.3\lib\net472\AsmResolver.DotNet.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="AsmResolver.PE, Version=5.5.1.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\BepInEx.AssemblyPublicizer.MSBuild.0.4.3\lib\net472\AsmResolver.PE.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="AsmResolver.PE.File, Version=5.5.1.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\BepInEx.AssemblyPublicizer.MSBuild.0.4.3\lib\net472\AsmResolver.PE.File.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>..\..\..\..\Program Files (x86)\Steam\steamapps\common\JinGu\JinGu\JinGu_Data\Managed\Assembly-CSharp.dll</HintPath>
@@ -59,9 +63,11 @@
     </Reference>
     <Reference Include="BepInEx.AssemblyPublicizer, Version=0.4.3.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\BepInEx.AssemblyPublicizer.MSBuild.0.4.3\lib\net472\BepInEx.AssemblyPublicizer.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="BepInEx.AssemblyPublicizer.MSBuild, Version=0.4.3.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\BepInEx.AssemblyPublicizer.MSBuild.0.4.3\lib\net472\BepInEx.AssemblyPublicizer.MSBuild.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\..\..\..\Program Files (x86)\Steam\steamapps\common\JinGu\JinGu\JinGu_Data\Managed\Newtonsoft.Json.dll</HintPath>
@@ -127,6 +133,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ModConfig.cs" />
     <Compile Include="DBLoadManager.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="Patches\Crafting_Patches.cs" />
